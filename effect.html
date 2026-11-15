@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delete With Style</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:14px/1.4 "Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;color:#1d2433;background:#eef1f5;overflow:hidden}
+#stage{position:absolute;left:0;right:0;top:0;bottom:96px;padding:20px;display:flex;justify-content:center;align-items:flex-start;overflow:hidden}
+#card{display:block;border-radius:6px;box-shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(20,30,60,.08)}
+#card.in{animation:cardIn .35s ease-out}
+@keyframes cardIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#fx{position:fixed;left:0;top:0;pointer-events:none;z-index:10}
+.bar{position:absolute;left:0;right:0;bottom:0;height:96px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:0 16px}
+.bar button{font:inherit;font-size:15px;border:1px solid #cfd6e2;background:#fff;border-radius:10px;padding:10px 18px;cursor:pointer;color:#1d2433}
+.bar button:hover{background:#f4f6fb}
+.bar button.go{background:#e8590c;border-color:#e8590c;color:#fff;font-weight:700;font-size:17px;padding:12px 26px;box-shadow:0 6px 16px rgba(232,89,12,.3)}
+.bar button.go:hover{background:#d9480f}
+.bar .msg{width:100%;text-align:center;font-weight:600;margin-top:-6px}
+.bar .msg small{display:block;font-weight:400;color:#667085}
+.hidden{display:none!important}
+#mute{position:fixed;top:10px;right:10px;z-index:20;border:1px solid #cfd6e2;background:#fff;border-radius:8px;padding:5px 9px;cursor:pointer;font-size:15px}
+body.busy .bar{visibility:hidden}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="card"></canvas></div>
+<div class="bar" id="ready">
+  <button class="go" id="go">🔥 Burn it!</button>
+  <button id="cancel">Never mind</button>
+</div>
+<div class="bar hidden" id="finished">
+  <div class="msg"><span id="doneMsg"></span><small>Now delete the email in Outlook to finish the job.</small></div>
+  <button id="again">↺ Again</button>
+  <button id="close">Close</button>
+</div>
+<button id="mute" title="Sound on/off">🔊</button>
+<canvas id="fx"></canvas>
+<script src="fx.js"></script>
+<script>
+const LABEL={fire:'🔥 Burn it!',shred:'🗂️ Shred it!',plane:'✈️ Launch it!',hole:'🕳️ Feed the black hole!',shoot:'🎯 Shoot it up!',chipper:'🪵 Into the chipper!',hammer:'🔨 Smash it!',car:'🚗 Drop the car!'};
+const params=new URLSearchParams(location.search);
+let chosen=params.get('fx')||'random', kind=null;
+
+function decode(b){try{b=b.replace(/-/g,'+').replace(/_/g,'/');const bin=atob(b);const bytes=Uint8Array.from(bin,c=>c.charCodeAt(0));return JSON.parse(new TextDecoder().decode(bytes));}catch(e){return null}}
+const raw=decode(params.get('d')||'')||{subj:'Re: Re: Fwd: Quarterly synergy alignment',from:'Sample Sender',addr:'sender@example.com',time:'',body:'This is a preview with a sample email.\n\nOpen this from Outlook to destroy a real one.'};
+const COLORS=['#5c7cfa','#f76707','#ae3ec9','#12b886','#1c7ed6','#e64980','#2f9e44','#f59f00'];
+let h=0;for(const ch of (raw.from||'?'))h=(h*31+ch.charCodeAt(0))>>>0;
+const email={
+  subj:(raw.subj||'(no subject)').slice(0,200),
+  from:(raw.from||raw.addr||'Unknown sender').slice(0,60),
+  addr:(raw.addr||'').slice(0,70),
+  time:raw.time||'',
+  color:COLORS[h%COLORS.length],
+  body:(raw.body||'').split(/\n\s*\n/).map(p=>p.replace(/\s*\n\s*/g,' ').trim()).filter(Boolean).slice(0,10).map(p=>p.length>420?p.slice(0,417)+'…':p),
+  sig:''
+};
+if(!email.body.length)email.body=['(This email has no text.)'];
+
+function render(){
+  const stage=document.getElementById('stage');
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  const w=Math.max(260,Math.min(720,stage.clientWidth-40));
+  const mctx=card.getContext('2d');mctx.setTransform(1,0,0,1,0,0);
+  const need=layoutEmail(mctx,w,0,email,false);
+  const hh=Math.max(200,Math.min(stage.clientHeight-40,need));
+  card.width=Math.round(w*dpr);card.height=Math.round(hh*dpr);card.style.width=w+'px';card.style.height=hh+'px';
+  const ctx=card.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);layoutEmail(ctx,w,hh,email,true);
+}
+function pickKind(){kind=chosen==='random'||!FX[chosen]?KINDS[Math.floor(Math.random()*KINDS.length)]:chosen;$('#go').textContent=LABEL[kind];}
+
+async function play(){
+  if(busy)return;busy=true;document.body.classList.add('busy');
+  ac();
+  const r=card.getBoundingClientRect();
+  sizeFx();octx.clearRect(0,0,innerWidth,innerHeight);octx.drawImage(card,r.left,r.top,r.width,r.height);
+  card.style.visibility='hidden';
+  try{await FX[kind]({left:r.left,top:r.top,width:r.width,height:r.height},card);}catch(e){console.error(e)}
+  octx.setTransform(dpr,0,0,dpr,0,0);octx.clearRect(0,0,innerWidth,innerHeight);
+  $('#doneMsg').textContent=DONE_MSG[kind];
+  $('#ready').classList.add('hidden');$('#finished').classList.remove('hidden');
+  busy=false;document.body.classList.remove('busy');
+}
+function again(){pickKind();card.style.visibility='visible';render();card.classList.remove('in');void card.offsetWidth;card.classList.add('in');
+  $('#finished').classList.add('hidden');$('#ready').classList.remove('hidden');$('#go').focus();}
+function closeMe(){try{Office.context.ui.messageParent('close');}catch(e){try{window.close()}catch(_){}}}
+
+$('#go').onclick=play;$('#again').onclick=again;$('#close').onclick=closeMe;$('#cancel').onclick=closeMe;
+$('#mute').onclick=()=>{muted=!muted;$('#mute').textContent=muted?'🔇':'🔊';};
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMe();});
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(()=>{if(!busy&&card.style.visibility!=='hidden'){sizeFx();render();}},120);});
+
+pickKind();sizeFx();render();$('#go').focus();
+if(window.Office&&Office.onReady)Office.onReady(()=>{});
+</script>
+</body>
+</html>
